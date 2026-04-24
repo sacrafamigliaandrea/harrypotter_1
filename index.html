@@ -8,11 +8,23 @@
 <title>Harry Potter e la Pietra Filosofale — Audiolettura</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Cinzel:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Cinzel:wght@500;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
 <style>
 /* ========== RESET + BASE ========== */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+:root{
+  /* Variabili della lettura - modificabili dal pannello Aa */
+  --reading-font-size: 22px;
+  --reading-font-family: 'EB Garamond', Georgia, serif;
+  --reading-line-height: 1.72;
+  --reading-text-align: justify;
+  --reading-letter-spacing: 0;
+  --reading-word-spacing: 0;
+  --reading-hyphens: auto;
+  --reading-max-width: 760px;
+  --reading-paragraph-gap: 1em;
+}
 body{
   font-family:'EB Garamond',Georgia,serif;
   font-size:20px;
@@ -315,9 +327,12 @@ input{font:inherit;color:inherit}
 
 /* ========== READING AREA ========== */
 .reading{
-  max-width:720px;
+  max-width:var(--reading-max-width);
   margin:0 auto;
-  padding:44px 28px 120px;
+  padding:44px 32px 140px;
+  font-family:var(--reading-font-family);
+  font-size:var(--reading-font-size);
+  line-height:var(--reading-line-height);
 }
 .chapter-header{
   text-align:center;
@@ -347,26 +362,53 @@ input{font:inherit;color:inherit}
 .chapter-title{
   font-family:'Cinzel',serif;
   font-weight:700;
-  font-size:34px;
+  font-size:36px;
   line-height:1.2;
   letter-spacing:.02em;
   color:#3d2a10;
 }
 
 .paragraph{
-  margin-bottom:1em;
+  margin-bottom:var(--reading-paragraph-gap);
   padding:10px 22px 10px 22px;
   border-left:3px solid transparent;
   border-radius:0 2px 2px 0;
   cursor:pointer;
   transition:background .35s ease, border-color .35s ease, padding-left .25s ease;
   position:relative;
-  text-align:justify;
-  hyphens:auto;
-  -webkit-hyphens:auto;
+  text-align:var(--reading-text-align);
+  letter-spacing:var(--reading-letter-spacing);
+  word-spacing:var(--reading-word-spacing);
+  hyphens:var(--reading-hyphens);
+  -webkit-hyphens:var(--reading-hyphens);
 }
 .paragraph:hover{
   background:rgba(201,174,118,.11);
+}
+
+/* --- Modalità accessibile (DSA-friendly) --- */
+body.mode-accessibile{
+  --reading-font-family: 'Atkinson Hyperlegible', 'Verdana', sans-serif;
+  --reading-line-height: 1.85;
+  --reading-text-align: left;
+  --reading-letter-spacing: .018em;
+  --reading-word-spacing: .08em;
+  --reading-hyphens: none;
+  --reading-paragraph-gap: 1.2em;
+}
+body.mode-accessibile .paragraph:first-of-type::first-letter{
+  font-family:inherit;
+  font-size:inherit;
+  line-height:inherit;
+  float:none;
+  padding:0;
+  color:inherit;
+  font-weight:inherit;
+}
+body.mode-accessibile .chapter-title{
+  font-family:'Atkinson Hyperlegible',sans-serif;
+  font-weight:700;
+  letter-spacing:.01em;
 }
 .paragraph.current{
   background:linear-gradient(90deg, rgba(230,200,140,.45) 0%, rgba(230,200,140,.18) 100%);
@@ -533,9 +575,153 @@ input{font:inherit;color:inherit}
   margin-top:4px;
 }
 
+/* ========== SETTINGS PANEL ========== */
+.settings-overlay{
+  position:fixed;inset:0;z-index:100;
+  background:rgba(60,40,10,.35);
+  backdrop-filter:blur(3px);
+  opacity:0;pointer-events:none;
+  transition:opacity .2s;
+}
+.settings-overlay.open{opacity:1;pointer-events:auto}
+.settings-panel{
+  position:fixed;top:0;right:0;bottom:0;z-index:101;
+  width:440px;max-width:92vw;
+  background:#fbf5e2;
+  border-left:1px solid #c9ae76;
+  box-shadow:-20px 0 60px -10px rgba(70,40,10,.4);
+  transform:translateX(100%);
+  transition:transform .32s cubic-bezier(.7,0,.3,1);
+  display:flex;flex-direction:column;
+}
+.settings-panel.open{transform:translateX(0)}
+.settings-header{
+  padding:22px 26px 18px;
+  border-bottom:1px solid #c9ae76;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.settings-title{
+  font-family:'Cinzel',serif;
+  font-size:13px;
+  letter-spacing:.24em;
+  text-transform:uppercase;
+  color:#3d2a10;
+}
+.settings-body{
+  flex:1;
+  overflow-y:auto;
+  padding:24px 26px 32px;
+}
+.settings-group{margin-bottom:6px}
+.settings-label{
+  font-family:'Cinzel',serif;
+  font-size:10.5px;
+  letter-spacing:.24em;
+  text-transform:uppercase;
+  color:#8a6a2a;
+  margin-bottom:14px;
+}
+.settings-sizes{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:8px;
+}
+.size-btn{
+  padding:12px 4px;
+  background:#fff9e8;
+  border:1px solid #c9ae76;
+  color:#6c5434;
+  font-family:'EB Garamond',serif;
+  font-weight:500;
+  transition:all .15s;
+  line-height:1;
+}
+.size-btn:hover{background:#f0e4bb;color:#3d2a10}
+.size-btn.active{
+  background:#3d2a10;
+  color:#f3ebd7;
+  border-color:#3d2a10;
+  box-shadow:0 4px 12px -4px rgba(60,40,10,.4);
+}
+.settings-hint{
+  margin-top:10px;
+  font-style:italic;
+  font-size:14px;
+  color:#8a7555;
+  text-align:center;
+}
+.settings-divider{
+  height:1px;
+  background:linear-gradient(90deg,transparent,#c9ae76,transparent);
+  margin:26px -26px;
+}
+.settings-modes{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.mode-btn{
+  padding:18px 16px;
+  background:#fff9e8;
+  border:1px solid #c9ae76;
+  text-align:left;
+  transition:all .15s;
+}
+.mode-btn:hover{background:#f0e4bb}
+.mode-btn.active{
+  background:#3d2a10;
+  color:#f3ebd7;
+  border-color:#3d2a10;
+}
+.mode-btn.active .mode-btn-desc{color:rgba(243,235,215,.7)}
+.mode-btn-title{
+  font-weight:600;
+  color:inherit;
+  margin-bottom:8px;
+  line-height:1.1;
+}
+.mode-btn-desc{
+  font-size:12.5px;
+  font-style:italic;
+  color:#6c5434;
+  line-height:1.45;
+}
+.settings-preview{
+  margin-top:4px;
+  padding:18px 20px;
+  background:#f3ebd7;
+  border:1px solid rgba(201,174,118,.5);
+  font-size:var(--reading-font-size);
+  font-family:var(--reading-font-family);
+  line-height:var(--reading-line-height);
+  text-align:var(--reading-text-align);
+  letter-spacing:var(--reading-letter-spacing);
+  word-spacing:var(--reading-word-spacing);
+  color:#2a1f15;
+  hyphens:var(--reading-hyphens);
+  -webkit-hyphens:var(--reading-hyphens);
+  max-height:180px;
+  overflow:hidden;
+}
+.settings-reset{
+  display:block;
+  width:100%;
+  margin-top:22px;
+  padding:11px;
+  background:transparent;
+  border:1px solid #c9ae76;
+  color:#8a6a2a;
+  font-family:'Cinzel',serif;
+  font-size:11px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  transition:all .15s;
+}
+.settings-reset:hover{background:#f0e4bb;color:#3d2a10}
+
 /* ========== RESUME BANNER ========== */
 .resume-banner{
-  position:sticky;top:68px;z-index:40;
+  position:sticky;top:var(--topbar-h, 108px);z-index:40;
   background:#6c9a48;
   color:#fff;
   padding:12px 20px;
@@ -625,21 +811,27 @@ input{font:inherit;color:inherit}
   pointer-events:none;
 }
 
-/* ========== RESPONSIVE — iPad 10.3" & smaller ========== */
-@media (max-width:900px){
+/* ========== RESPONSIVE — iPad 10.9" landscape (1180x820) / portrait (820x1180) / smaller ========== */
+@media (min-width:1024px){
+  :root{
+    --reading-max-width:820px;
+  }
+}
+@media (max-width:760px){
   .topbar-inner{gap:12px;padding:8px 14px}
   .reading-info{display:none}
   .topbar-right{gap:8px}
   .nick-badge{font-size:11px;padding:6px 10px 6px 8px}
   .reading{padding:32px 22px 100px}
   .paragraph{padding:10px 14px}
-  body{font-size:19px}
   .chapter-title{font-size:28px}
 }
-@media (max-width:640px){
+@media (max-width:560px){
   .nick-badge .nick-name{display:none}
   .player-time{min-width:0;font-size:10px}
-  body{font-size:18px}
+  .icon-btn{width:40px;height:40px}
+  .player-btn{width:38px;height:38px}
+  .player-mini-btn{width:28px;height:28px}
 }
 
 /* Font rendering boost */
@@ -704,6 +896,9 @@ input{font:inherit;color:inherit}
         <button class="icon-btn" id="btn-goto-current" aria-label="Vai al paragrafo corrente" title="Torna al paragrafo che stai seguendo">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="1" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="1" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="23" y2="12"/></svg>
         </button>
+        <button class="icon-btn" id="btn-reading-settings" aria-label="Impostazioni lettura" title="Dimensione e stile del testo">
+          <span style="font-family:'Cinzel',serif;font-weight:700;font-size:17px;letter-spacing:-.03em"><span style="font-size:22px">A</span>a</span>
+        </button>
         <button class="icon-btn" id="btn-chapters" aria-label="Indice capitoli">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
         </button>
@@ -748,6 +943,57 @@ input{font:inherit;color:inherit}
   <div class="drawer-list" id="drawer-list"></div>
 </aside>
 
+<!-- =============== READING SETTINGS POPOVER =============== -->
+<div class="settings-overlay" id="settings-overlay"></div>
+<aside class="settings-panel" id="settings-panel" role="dialog" aria-label="Impostazioni lettura">
+  <div class="settings-header">
+    <h2 class="settings-title">Impostazioni di lettura</h2>
+    <button class="drawer-close" id="settings-close" aria-label="Chiudi">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+
+  <div class="settings-body">
+
+    <div class="settings-group">
+      <div class="settings-label">Dimensione del testo</div>
+      <div class="settings-sizes">
+        <button class="size-btn" data-size="18" style="font-size:14px">Aa</button>
+        <button class="size-btn" data-size="20" style="font-size:16px">Aa</button>
+        <button class="size-btn" data-size="22" style="font-size:18px">Aa</button>
+        <button class="size-btn" data-size="26" style="font-size:22px">Aa</button>
+        <button class="size-btn" data-size="30" style="font-size:26px">Aa</button>
+      </div>
+      <div class="settings-hint" id="size-hint">22 px — consigliata per iPad</div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-group">
+      <div class="settings-label">Stile di lettura</div>
+      <div class="settings-modes">
+        <button class="mode-btn" data-mode="classic">
+          <div class="mode-btn-title" style="font-family:'EB Garamond',serif;font-size:22px">Classico</div>
+          <div class="mode-btn-desc">Serif elegante, giustificato.<br>Per chi legge senza difficoltà.</div>
+        </button>
+        <button class="mode-btn" data-mode="accessibile">
+          <div class="mode-btn-title" style="font-family:'Atkinson Hyperlegible',sans-serif;font-size:19px">Accessibile</div>
+          <div class="mode-btn-desc">Sans-serif ad alta leggibilità,<br>spaziatura ampia. Adatto a DSA.</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-preview" id="settings-preview">
+      <em>Harry e Ron si scambiarono uno sguardo. Quello era proprio un giorno strano — in fondo, da quando era arrivato a Hogwarts non aveva fatto altro che succedergli cose impossibili.</em>
+    </div>
+
+    <button class="settings-reset" id="settings-reset">Ripristina le impostazioni iniziali</button>
+
+  </div>
+</aside>
+
 <!-- YouTube player hidden -->
 <div id="yt-player-wrap"><div id="yt-player"></div></div>
 
@@ -782,6 +1028,10 @@ let state = {
   chapterAudioStart: {},    // { "ch:1": 0 } - quando l'audio di YT arriva all'inizio di ogni capitolo
   readChapters: [],
   showNumbers: false,
+  reading: {
+    fontSize: 22,           // px — 18, 20, 22, 26, 30
+    mode: 'classic'         // 'classic' | 'accessibile'
+  },
   lastSaveTs: 0
 };
 
@@ -846,6 +1096,70 @@ function chapterAudioStartEstimated(chapterNum, wpm){
     t += chapterEstimatedDuration(ch, wpm);
   }
   return t;
+}
+
+/* ---------- READING SETTINGS ---------- */
+const SIZE_HINTS = {
+  18: 'Compatta — più testo visibile',
+  20: 'Leggera — standard libro',
+  22: 'Consigliata per iPad',
+  26: 'Grande — lettura rilassata',
+  30: 'Extra grande — massima leggibilità'
+};
+
+function applyReadingSettings(){
+  const r = state.reading || {fontSize:22, mode:'classic'};
+  // Font size → CSS var sul root
+  document.documentElement.style.setProperty('--reading-font-size', r.fontSize + 'px');
+  // Mode → classe sul body
+  document.body.classList.remove('mode-classic', 'mode-accessibile');
+  document.body.classList.add('mode-' + r.mode);
+  // Update UI del pannello
+  document.querySelectorAll('.size-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.size) === r.fontSize);
+  });
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === r.mode);
+  });
+  const hint = document.getElementById('size-hint');
+  if(hint) hint.textContent = `${r.fontSize} px — ${SIZE_HINTS[r.fontSize] || ''}`;
+}
+
+function openSettings(){
+  document.getElementById('settings-panel').classList.add('open');
+  document.getElementById('settings-overlay').classList.add('open');
+  applyReadingSettings(); // refresh UI
+}
+function closeSettings(){
+  document.getElementById('settings-panel').classList.remove('open');
+  document.getElementById('settings-overlay').classList.remove('open');
+}
+
+function initSettingsEvents(){
+  document.getElementById('btn-reading-settings').addEventListener('click', openSettings);
+  document.getElementById('settings-close').addEventListener('click', closeSettings);
+  document.getElementById('settings-overlay').addEventListener('click', closeSettings);
+
+  document.querySelectorAll('.size-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      state.reading.fontSize = parseInt(b.dataset.size);
+      applyReadingSettings();
+      saveState();
+    });
+  });
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      state.reading.mode = b.dataset.mode;
+      applyReadingSettings();
+      saveState();
+    });
+  });
+  document.getElementById('settings-reset').addEventListener('click', () => {
+    state.reading = {fontSize:22, mode:'classic'};
+    applyReadingSettings();
+    saveState();
+    toast('Impostazioni di lettura ripristinate');
+  });
 }
 
 /* ---------- FORMAT ---------- */
@@ -1236,6 +1550,10 @@ function startSession(nick, saved){
   document.getElementById('screen-login').classList.remove('active');
   document.getElementById('screen-reading').classList.add('active');
 
+  // Applica le impostazioni di lettura salvate (o default)
+  if(!state.reading) state.reading = {fontSize:22, mode:'classic'};
+  applyReadingSettings();
+
   renderChapter(state.currentChapter);
 
   // Resume banner se lo studente non è al capitolo 1 paragrafo 0 (cioè ha già fatto dei progressi)
@@ -1327,6 +1645,23 @@ function initUIEvents(){
     if(document.visibilityState === 'hidden') saveState();
   });
 
+  // Gestione resize / cambio orientamento (portrait ↔ landscape su iPad)
+  let resizeTimer = null;
+  function onResize(){
+    updateLayoutHeights();
+    // Dopo la rotazione, il paragrafo corrente può essere uscito dalla vista:
+    // lo riporto al centro dopo che il layout si è stabilizzato.
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const el = document.querySelector(`.paragraph[data-idx="${state.currentParagraphIdx}"]`);
+      if(el && document.getElementById('screen-reading').classList.contains('active')){
+        scrollParagraphIntoView(el);
+      }
+    }, 250);
+  }
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', onResize);
+
   // Tastiera esterna (utile con keyboard Bluetooth su iPad)
   document.addEventListener('keydown', (e)=>{
     // Non intercettare se sta scrivendo nel login
@@ -1357,10 +1692,27 @@ function initUIEvents(){
   });
 }
 
+/* ---------- LAYOUT MEASUREMENT ---------- */
+function updateLayoutHeights(){
+  const tb = document.getElementById('topbar');
+  if(!tb) return;
+  const h = tb.offsetHeight;
+  if(h > 0){
+    document.documentElement.style.setProperty('--topbar-h', h + 'px');
+  }
+}
+
 /* ---------- BOOT ---------- */
 initLogin();
 initUIEvents();
 initPlayerEvents();
+initSettingsEvents();
+// Misura iniziale e ad ogni rotazione (listener è dentro initUIEvents)
+updateLayoutHeights();
+// Misura anche dopo che i font sono caricati, perché possono cambiare l'altezza
+if(document.fonts && document.fonts.ready){
+  document.fonts.ready.then(updateLayoutHeights);
+}
 </script>
 </body>
 </html>
