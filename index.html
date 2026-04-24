@@ -237,6 +237,14 @@ input{font:inherit;color:inherit}
   text-overflow:ellipsis;
   letter-spacing:.01em;
 }
+.reading-progress{
+  font-family:'Cinzel',serif;
+  font-size:10px;
+  letter-spacing:.16em;
+  color:#8a6a2a;
+  margin-top:3px;
+  font-variant-numeric:tabular-nums;
+}
 
 /* --- Right controls --- */
 .topbar-right{
@@ -367,17 +375,17 @@ input{font:inherit;color:inherit}
     inset 0 0 0 1px rgba(138,106,42,.15),
     0 1px 0 rgba(255,255,255,.6);
 }
-.paragraph.bookmark{
-  border-left-color:#6c9a48;
-}
-.paragraph.bookmark::before{
-  content:"";
+.paragraph.current::before{
+  content:"▸";
   position:absolute;
-  left:-11px;top:50%;
-  transform:translateY(-50%);
-  width:18px;height:18px;
-  background:#6c9a48;
-  clip-path:polygon(0 0, 100% 0, 100% 75%, 50% 100%, 0 75%);
+  left:-22px;top:14px;
+  color:#8a6a2a;
+  font-size:18px;
+  animation:pulseArrow 2.4s ease-in-out infinite;
+}
+@keyframes pulseArrow{
+  0%,100%{opacity:.45;transform:translateX(0)}
+  50%{opacity:1;transform:translateX(2px)}
 }
 .paragraph.pending-calibration{
   animation:flashCalib .5s ease;
@@ -688,12 +696,13 @@ input{font:inherit;color:inherit}
       <div class="reading-info">
         <div class="reading-chapter-label" id="topbar-chapter-label">Capitolo —</div>
         <div class="reading-chapter-title" id="topbar-chapter-title">—</div>
+        <div class="reading-progress" id="reading-progress">¶ 0 / 0</div>
       </div>
 
       <!-- Right -->
       <div class="topbar-right">
-        <button class="icon-btn" id="btn-bookmark" aria-label="Segnalibro" title="Salva segnalibro qui">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3a1 1 0 0 0-1 1v18l7-4 7 4V4a1 1 0 0 0-1-1H6z"/></svg>
+        <button class="icon-btn" id="btn-goto-current" aria-label="Vai al paragrafo corrente" title="Torna al paragrafo che stai seguendo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="1" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="1" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="23" y2="12"/></svg>
         </button>
         <button class="icon-btn" id="btn-chapters" aria-label="Indice capitoli">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
@@ -705,7 +714,7 @@ input{font:inherit;color:inherit}
     <!-- Sub-bar -->
     <div class="subbar">
       <div class="subbar-inner">
-        <div class="subbar-status" id="subbar-status">Premi <strong>▶</strong> per iniziare l'ascolto · Tocca un paragrafo per riallinearlo con l'audio</div>
+        <div class="subbar-status" id="subbar-status">👆 Tocca ogni paragrafo <strong>mentre il narratore lo legge</strong> — segui con gli occhi, seleziona col dito</div>
         <div class="subbar-actions">
           <button class="subbar-btn" id="btn-toggle-numbers">Numeri ¶</button>
           <button class="subbar-btn subbar-btn-danger" id="btn-reset">Ricomincia</button>
@@ -935,19 +944,18 @@ function setCurrentParagraph(idx, doScroll=true){
   if(!el) return;
   el.classList.add('current');
 
-  // Bookmark class
-  if(state.bookmarkChapter === state.currentChapter && state.bookmarkParagraphIdx === idx){
-    el.classList.add('bookmark');
-  } else {
-    reading.querySelectorAll('.paragraph.bookmark').forEach(x => x.classList.remove('bookmark'));
-    if(state.bookmarkChapter === state.currentChapter){
-      const bm = reading.querySelector(`.paragraph[data-idx="${state.bookmarkParagraphIdx}"]`);
-      if(bm) bm.classList.add('bookmark');
-    }
-  }
-
   if(doScroll){
     scrollParagraphIntoView(el);
+  }
+  updateProgressIndicator();
+}
+
+function updateProgressIndicator(){
+  const ch = BOOK.chapters[state.currentChapter-1];
+  if(!ch) return;
+  const el = document.getElementById('reading-progress');
+  if(el){
+    el.textContent = `¶ ${state.currentParagraphIdx+1} / ${ch.paragraphs.length}`;
   }
 }
 
@@ -962,33 +970,25 @@ function scrollParagraphIntoView(el){
   window.scrollTo({top:target, behavior:'smooth'});
 }
 
-/* ---------- TAP su paragrafo: ricalibrazione audio ---------- */
+/* ---------- TAP su paragrafo: lo studente marca "sto seguendo qui" ---------- */
 let tapCooldown = false;
 function onParagraphTap(idx){
   if(tapCooldown) return;
   tapCooldown = true;
-  setTimeout(()=>tapCooldown=false, 300);
+  setTimeout(()=>tapCooldown=false, 150);
 
-  const p = document.querySelector(`.paragraph[data-idx="${idx}"]`);
-  if(!p) return;
+  setCurrentParagraph(idx, true);
+  saveState();
 
-  // Se l'audio è in play, questo paragrafo è "quello che sto ascoltando adesso"
-  // → usiamo il tempo audio corrente come ancora per (chapter, paragraphIdx)
-  if(isPlayerReady && player && isPlaying){
-    const t = player.getCurrentTime();
-    calibrate(state.currentChapter, idx, t);
-    setCurrentParagraph(idx, false);
-    p.classList.add('pending-calibration');
-    setTimeout(()=>p.classList.remove('pending-calibration'), 500);
-    toast('Allineato con l\'audio in questo punto ✓');
-  } else {
-    // Audio fermo → segna bookmark qui
-    state.bookmarkChapter = state.currentChapter;
-    state.bookmarkParagraphIdx = idx;
-    setCurrentParagraph(idx, false);
-    saveState();
-    toast('Segnalibro salvato');
+  // Se ha raggiunto gli ultimi 2 paragrafi del capitolo, considera il capitolo letto
+  const ch = BOOK.chapters[state.currentChapter-1];
+  if(idx >= ch.paragraphs.length - 2){
+    if(!state.readChapters.includes(state.currentChapter)){
+      state.readChapters.push(state.currentChapter);
+    }
   }
+
+  updateProgressIndicator();
 }
 
 /* ---------- CALIBRAZIONE ---------- */
@@ -1044,18 +1044,10 @@ function tickSync(){
   if(!isFinite(t)) return;
   state.audioTime = t;
 
-  // Update player UI
+  // Update solo del player UI (tempo, barra seek).
+  // L'evidenziazione dei paragrafi NON è più guidata dall'audio:
+  // è lo studente che attiva il paragrafo corrente con il tap.
   updatePlayerUI(t);
-
-  // Se sta suonando, determina paragrafo e aggiorna highlight
-  if(isPlaying){
-    const {chapterNum, paragraphIdx} = resolveParagraphFromAudio(t);
-    if(chapterNum !== state.currentChapter){
-      renderChapter(chapterNum, {paragraphIdx, scroll:true});
-    } else if(paragraphIdx !== state.currentParagraphIdx){
-      setCurrentParagraph(paragraphIdx, true);
-    }
-  }
 
   // Autosave ogni ~5s
   if(Date.now() - state.lastSaveTs > 5000){
@@ -1161,13 +1153,9 @@ function onPlayerStateChange(e){
     isPlaying = true;
     setPlayIcon(false);
     if(!syncInterval) syncInterval = setInterval(tickSync, 400);
-    document.getElementById('subbar-status').innerHTML = 'In ascolto · Tocca un paragrafo per riallinearlo all\'audio';
   } else {
     isPlaying = false;
     setPlayIcon(true);
-    if(s === YT.PlayerState.PAUSED){
-      document.getElementById('subbar-status').innerHTML = 'In pausa · Tocca un paragrafo per metterlo come segnalibro';
-    }
   }
 }
 function onPlayerError(e){
@@ -1250,11 +1238,11 @@ function startSession(nick, saved){
 
   renderChapter(state.currentChapter);
 
-  // Resume banner se c'è un bookmark
-  if(state.bookmarkChapter && state.bookmarkParagraphIdx != null){
-    const ch = BOOK.chapters[state.bookmarkChapter-1];
+  // Resume banner se lo studente non è al capitolo 1 paragrafo 0 (cioè ha già fatto dei progressi)
+  if(state.currentChapter > 1 || state.currentParagraphIdx > 0){
+    const ch = BOOK.chapters[state.currentChapter-1];
     document.getElementById('resume-text').innerHTML =
-      `Hai un segnalibro al <strong>Capitolo ${ch.num}: ${ch.title}</strong>, paragrafo <strong>${state.bookmarkParagraphIdx+1}</strong>`;
+      `Riprendi dal <strong>Capitolo ${ch.num}: ${ch.title}</strong>, paragrafo <strong>${state.currentParagraphIdx+1}</strong>?`;
     document.getElementById('resume-banner').classList.add('show');
   }
 
@@ -1274,12 +1262,14 @@ function loadYTApi(){
 
 /* ---------- UI EVENTS ---------- */
 function initUIEvents(){
-  document.getElementById('btn-bookmark').addEventListener('click', ()=>{
-    state.bookmarkChapter = state.currentChapter;
-    state.bookmarkParagraphIdx = state.currentParagraphIdx;
-    setCurrentParagraph(state.currentParagraphIdx, false);
-    saveState();
-    toast('Segnalibro salvato');
+  document.getElementById('btn-goto-current').addEventListener('click', ()=>{
+    const el = document.querySelector(`.paragraph[data-idx="${state.currentParagraphIdx}"]`);
+    if(el){
+      scrollParagraphIntoView(el);
+      // Piccolo flash per richiamare l'occhio
+      el.classList.add('pending-calibration');
+      setTimeout(()=>el.classList.remove('pending-calibration'), 600);
+    }
   });
   document.getElementById('btn-chapters').addEventListener('click', openDrawer);
   document.getElementById('drawer-close').addEventListener('click', closeDrawer);
@@ -1323,9 +1313,7 @@ function initUIEvents(){
 
   // Resume banner
   document.getElementById('resume-yes').addEventListener('click', ()=>{
-    if(state.bookmarkChapter){
-      goToChapter(state.bookmarkChapter, state.bookmarkParagraphIdx);
-    }
+    goToChapter(state.currentChapter, state.currentParagraphIdx);
     document.getElementById('resume-banner').classList.remove('show');
   });
   document.getElementById('resume-no').addEventListener('click', ()=>{
@@ -1337,6 +1325,35 @@ function initUIEvents(){
   window.addEventListener('pagehide', saveState);
   document.addEventListener('visibilitychange', ()=>{
     if(document.visibilityState === 'hidden') saveState();
+  });
+
+  // Tastiera esterna (utile con keyboard Bluetooth su iPad)
+  document.addEventListener('keydown', (e)=>{
+    // Non intercettare se sta scrivendo nel login
+    if(document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    // Non intercettare se il drawer è aperto
+    if(document.getElementById('drawer').classList.contains('open')) return;
+
+    if(e.code === 'Space'){
+      e.preventDefault();
+      document.getElementById('btn-playpause').click();
+    } else if(e.code === 'ArrowDown' || e.code === 'ArrowRight' || e.code === 'Enter'){
+      e.preventDefault();
+      const ch = BOOK.chapters[state.currentChapter-1];
+      if(state.currentParagraphIdx < ch.paragraphs.length - 1){
+        onParagraphTap(state.currentParagraphIdx + 1);
+      } else if(state.currentChapter < BOOK.chapters.length){
+        goToChapter(state.currentChapter + 1, 0);
+      }
+    } else if(e.code === 'ArrowUp' || e.code === 'ArrowLeft'){
+      e.preventDefault();
+      if(state.currentParagraphIdx > 0){
+        onParagraphTap(state.currentParagraphIdx - 1);
+      } else if(state.currentChapter > 1){
+        const prev = BOOK.chapters[state.currentChapter-2];
+        goToChapter(state.currentChapter - 1, prev.paragraphs.length - 1);
+      }
+    }
   });
 }
 
