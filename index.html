@@ -225,6 +225,17 @@ input{font:inherit;color:inherit}
   transition:left .3s linear;
 }
 
+/* Player disattivato (capitolo senza audio) */
+.player.player-unavailable{
+  opacity:.45;
+  pointer-events:none;
+  filter:grayscale(.4);
+}
+.player.player-unavailable .player-time{
+  font-style:italic;
+  color:#8a6a2a;
+}
+
 /* --- Center info --- */
 .reading-info{
   text-align:center;
@@ -573,6 +584,34 @@ body.mode-accessibile .chapter-title{
   font-style:italic;
   color:#8a7555;
   margin-top:4px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.audio-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:2px 8px;
+  border:1px solid #c9ae76;
+  background:#fff9e8;
+  font-family:'Cinzel',serif;
+  font-size:9.5px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:#3d2a10;
+  font-style:normal;
+  border-radius:1px;
+}
+.audio-badge.no{
+  border-color:#d4c19a;
+  background:transparent;
+  color:#8a7555;
+  border-style:dashed;
+}
+.chapter-item.no-audio .chapter-item-title{
+  color:#5d4824;
 }
 
 /* ========== SETTINGS PANEL ========== */
@@ -1011,26 +1050,42 @@ body.mode-accessibile .chapter-title{
    =========================================================== */
 
 const BOOK = JSON.parse(document.getElementById('book-data').textContent);
-const YT_VIDEO_ID = 'M8RUsWnPSfY';
-const STORAGE_KEY = 'hp_audiolettura_v1';
-const AUDIO_INTRO_OFFSET = 25; // secondi di intro nell'audio prima del Capitolo 1
+
+// Audio per capitolo: { videoId, offset } o null se non disponibile
+// Canale "Audiolibro Immersivo" - narrazione di Francesco Pannofino
+const CHAPTER_AUDIO = {
+  1:  { videoId: 's7gCh3PzzPM', offset: 0 },  // Il bambino sopravvissuto
+  2:  { videoId: 'akjxK26CS0w', offset: 0 },  // Vetri che scompaiono
+  3:  { videoId: 'Ud_5CxIvXgI', offset: 0 },  // Lettere da nessuno
+  4:  { videoId: 'pNjMr08j90k', offset: 0 },  // Il custode delle chiavi
+  5:  { videoId: 'cI-rV3FlQM8', offset: 0 },  // Diagon Alley
+  6:  null,                                    // Il binario - audio non disponibile
+  7:  { videoId: '5GhnMwGcCxo', offset: 0 },  // Il Cappello Parlante
+  8:  null,                                    // Il maestro delle Pozioni - non disponibile
+  9:  { videoId: 'Inqsw_1_GtU', offset: 0 },  // Il duello di mezzanotte
+  10: { videoId: 'h3o3dLCvV44', offset: 0 },  // Halloween
+  11: null,                                    // Il Quidditch - non disponibile
+  12: null,                                    // Lo specchio delle brame
+  13: null,                                    // Nicolas Flamel
+  14: null,                                    // Norberto, drago Dorsorugoso di Norvegia
+  15: null,                                    // La foresta proibita
+  16: null,                                    // La botola
+  17: null                                     // L'uomo dai due volti
+};
+const STORAGE_KEY = 'hp_audiolettura_v2';
 
 /* ---------- STATE ---------- */
 let state = {
   nick: '',
   currentChapter: 1,
-  currentParagraphIdx: 0,   // idx paragrafo corrente nel capitolo
-  bookmarkChapter: null,
-  bookmarkParagraphIdx: null,
-  audioTime: 0,
-  wpmCalibration: 165,      // words per minute iniziale
-  chapterAnchors: {},       // { "ch:1": [{paragraphIdx:0, audioTime:0}, ...] } - manuale
-  chapterAudioStart: {},    // { "ch:1": 0 } - quando l'audio di YT arriva all'inizio di ogni capitolo
+  currentParagraphIdx: 0,
+  audioTime: 0,            // tempo audio dell'ultimo capitolo ascoltato (per ripresa)
+  audioTimePerChapter: {}, // { "1": 142.3, "2": 0, ... } - posizione salvata per capitolo
   readChapters: [],
   showNumbers: false,
   reading: {
-    fontSize: 22,           // px — 18, 20, 22, 26, 30
-    mode: 'classic'         // 'classic' | 'accessibile'
+    fontSize: 22,
+    mode: 'classic'
   },
   lastSaveTs: 0
 };
@@ -1038,6 +1093,7 @@ let state = {
 let player = null;
 let isPlayerReady = false;
 let isPlaying = false;
+let loadedVideoId = null;     // quale video è caricato nel player ora
 let durationTotal = 0;
 let syncInterval = null;
 
@@ -1057,46 +1113,11 @@ function saveState(){
 }
 
 /* ---------- PRECOMPUTE ---------- */
-// Parole per paragrafo e tempo stimato cumulativo dall'inizio di OGNI capitolo
+// Parole per paragrafo (per indicatore "minuti residui" nel drawer)
 BOOK.chapters.forEach(ch => {
   ch.wordCounts = ch.paragraphs.map(p => p.split(/\s+/).filter(Boolean).length);
   ch.totalWords = ch.wordCounts.reduce((a,b)=>a+b,0);
 });
-
-// Calcola secondi cumulativi di inizio di ciascun paragrafo, dentro il capitolo
-function paragraphStartSeconds(chapter, paragraphIdx, wpm){
-  const secPerWord = 60 / wpm;
-  let s = 0;
-  for(let i=0; i<paragraphIdx; i++){
-    s += chapter.wordCounts[i] * secPerWord;
-    // piccola pausa tra paragrafi
-    s += 0.45;
-  }
-  return s;
-}
-
-// Durata stimata del capitolo (per calcolo proporzioni audio totali)
-function chapterEstimatedDuration(chapter, wpm){
-  return paragraphStartSeconds(chapter, chapter.paragraphs.length, wpm);
-}
-
-// Somma durate stimate capitoli precedenti = tempo di inizio stimato del capitolo N nell'audio globale
-function chapterAudioStartEstimated(chapterNum, wpm){
-  // se abbiamo ancora un valore calibrato manualmente lo usiamo
-  if(state.chapterAudioStart['ch:'+chapterNum] != null){
-    return state.chapterAudioStart['ch:'+chapterNum];
-  }
-  let t = AUDIO_INTRO_OFFSET; // inizia dopo l'introduzione dell'audiolibro
-  for(let n=1; n<chapterNum; n++){
-    const ch = BOOK.chapters[n-1];
-    if(state.chapterAudioStart['ch:'+(n+1)] != null){
-      t = state.chapterAudioStart['ch:'+(n+1)];
-      continue;
-    }
-    t += chapterEstimatedDuration(ch, wpm);
-  }
-  return t;
-}
 
 /* ---------- READING SETTINGS ---------- */
 const SIZE_HINTS = {
@@ -1305,52 +1326,7 @@ function onParagraphTap(idx){
   updateProgressIndicator();
 }
 
-/* ---------- CALIBRAZIONE ---------- */
-function calibrate(chapterNum, paragraphIdx, audioTime){
-  // Stima inizio del capitolo come: audioTime - (tempo stimato del paragrafo dentro il capitolo)
-  // e ricalibra wpm se abbiamo già due o più anchor nello stesso capitolo.
-  const ch = BOOK.chapters[chapterNum-1];
-  const pStart = paragraphStartSeconds(ch, paragraphIdx, state.wpmCalibration);
-  const chapterAudioStart = audioTime - pStart;
-
-  state.chapterAudioStart['ch:'+chapterNum] = Math.max(0, chapterAudioStart);
-
-  // Se c'è già un altro anchor manuale nello stesso capitolo, potremmo ricalibrare il wpm.
-  // Per ora manteniamo wpm e usiamo solo l'offset del capitolo (semplice e robusto).
-
-  saveState();
-}
-
-/* ---------- SYNC: paragrafo corrente da tempo audio ---------- */
-function resolveParagraphFromAudio(audioTime){
-  // Trova il capitolo corrente in base a chapterAudioStart
-  // Priorità: valori calibrati in state.chapterAudioStart, altrimenti stima sequenziale.
-
-  let bestCh = 1;
-  for(let n=1; n<=BOOK.chapters.length; n++){
-    const start = chapterAudioStartEstimated(n, state.wpmCalibration);
-    if(audioTime >= start) bestCh = n;
-    else break;
-  }
-  const ch = BOOK.chapters[bestCh-1];
-  const chStart = chapterAudioStartEstimated(bestCh, state.wpmCalibration);
-  const offsetInCh = audioTime - chStart;
-
-  // Trova paragrafo con cumulativo <= offsetInCh
-  let cumul = 0;
-  const secPerWord = 60 / state.wpmCalibration;
-  let pIdx = 0;
-  for(let i=0; i<ch.paragraphs.length; i++){
-    const dur = ch.wordCounts[i] * secPerWord + 0.45;
-    if(cumul + dur > offsetInCh){
-      pIdx = i; break;
-    }
-    cumul += dur;
-    pIdx = i;
-  }
-  return {chapterNum: bestCh, paragraphIdx: pIdx};
-}
-
+/* ---------- SYNC: solo aggiornamento UI player ---------- */
 function tickSync(){
   if(!isPlayerReady || !player) return;
   let t;
@@ -1358,12 +1334,13 @@ function tickSync(){
   if(!isFinite(t)) return;
   state.audioTime = t;
 
-  // Update solo del player UI (tempo, barra seek).
-  // L'evidenziazione dei paragrafi NON è più guidata dall'audio:
-  // è lo studente che attiva il paragrafo corrente con il tap.
+  // Salvo posizione del capitolo corrente (per riprendere al prossimo accesso)
+  if(loadedVideoId){
+    state.audioTimePerChapter[state.currentChapter] = t;
+  }
+
   updatePlayerUI(t);
 
-  // Autosave ogni ~5s
   if(Date.now() - state.lastSaveTs > 5000){
     saveState();
   }
@@ -1388,12 +1365,16 @@ function renderDrawer(){
     item.className = 'chapter-item';
     if(ch.num === state.currentChapter) item.classList.add('active');
     if(state.readChapters.includes(ch.num)) item.classList.add('read');
-    const bm = state.bookmarkChapter === ch.num ? ' · Segnalibro qui' : '';
-    const minutes = Math.round(ch.totalWords / state.wpmCalibration);
+    const hasAudio = !!CHAPTER_AUDIO[ch.num];
+    if(!hasAudio) item.classList.add('no-audio');
+    const minutes = Math.round(ch.totalWords / 165);
+    const audioBadge = hasAudio
+      ? '<span class="audio-badge"><svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M8 2v12M5 5v6M11 5v6M2 7v2M14 7v2"/></svg> Audio</span>'
+      : '<span class="audio-badge no">Solo testo</span>';
     item.innerHTML = `
       <div class="chapter-item-num">Capitolo ${ch.num}</div>
       <div class="chapter-item-title">${ch.title}</div>
-      <div class="chapter-item-meta">${ch.paragraphs.length} paragrafi · ~${minutes} min${bm}</div>`;
+      <div class="chapter-item-meta">${ch.paragraphs.length} paragrafi · ~${minutes} min ${audioBadge}</div>`;
     item.addEventListener('click', () => {
       goToChapter(ch.num);
       closeDrawer();
@@ -1413,25 +1394,103 @@ function closeDrawer(){
 
 /* ---------- NAVIGAZIONE ---------- */
 function goToChapter(n, paragraphIdx=0){
-  // Se abbiamo l'inizio audio del capitolo, seek audio
-  const audioStart = chapterAudioStartEstimated(n, state.wpmCalibration);
-  if(isPlayerReady && player && audioStart != null){
-    try{ player.seekTo(audioStart, true); }catch(e){}
-  }
+  // Salvo posizione audio del capitolo che lascio
+  saveCurrentAudioPosition();
+
   renderChapter(n, {paragraphIdx, scroll:true});
+
   // Segna capitoli precedenti come letti
   for(let i=1; i<n; i++){
     if(!state.readChapters.includes(i)) state.readChapters.push(i);
   }
+
+  // Carica il video del nuovo capitolo (se disponibile)
+  loadChapterAudio(n);
   saveState();
+}
+
+function saveCurrentAudioPosition(){
+  if(isPlayerReady && player && loadedVideoId){
+    try{
+      const t = player.getCurrentTime();
+      // Trovo a quale capitolo appartiene loadedVideoId
+      for(const [chNum, info] of Object.entries(CHAPTER_AUDIO)){
+        if(info && info.videoId === loadedVideoId){
+          state.audioTimePerChapter[chNum] = t;
+          break;
+        }
+      }
+    }catch(e){}
+  }
+}
+
+function loadChapterAudio(chapterNum){
+  const info = CHAPTER_AUDIO[chapterNum];
+  if(!info){
+    // Capitolo senza audio: ferma il player e aggiorna UI
+    if(isPlayerReady && player){
+      try{ player.pauseVideo(); }catch(e){}
+    }
+    loadedVideoId = null;
+    updatePlayerForUnavailable();
+    return;
+  }
+  if(!isPlayerReady || !player){
+    // Player non ancora pronto: salviamo l'intent, sarà caricato in onPlayerReady
+    pendingChapterToLoad = chapterNum;
+    return;
+  }
+  if(loadedVideoId === info.videoId){
+    // Stesso video già caricato: solo seek alla posizione salvata
+    return;
+  }
+  // Cambio video
+  const startSeconds = state.audioTimePerChapter[chapterNum] || info.offset || 0;
+  try{
+    player.loadVideoById({videoId: info.videoId, startSeconds});
+    // loadVideoById fa partire automaticamente l'autoplay; subito dopo metto in pausa
+    setTimeout(() => {
+      try{ player.pauseVideo(); }catch(e){}
+    }, 100);
+  }catch(e){
+    console.warn('loadVideoById failed', e);
+  }
+  loadedVideoId = info.videoId;
+  durationTotal = 0; // sarà aggiornato dal tickSync
+  updatePlayerForAvailable();
+}
+
+let pendingChapterToLoad = null;
+
+function updatePlayerForUnavailable(){
+  // Disabilita visivamente il player
+  document.getElementById('player').classList.add('player-unavailable');
+  document.getElementById('player-time').textContent = 'Audio non disponibile';
+  document.getElementById('player-seek-fill').style.width = '0%';
+  document.getElementById('player-seek-knob').style.left = '0%';
+  document.getElementById('subbar-status').innerHTML =
+    '<strong>Audio non ancora disponibile</strong> per questo capitolo · puoi comunque leggere e seguire il testo';
+}
+
+function updatePlayerForAvailable(){
+  document.getElementById('player').classList.remove('player-unavailable');
+  document.getElementById('subbar-status').innerHTML =
+    '👆 Tocca ogni paragrafo <strong>mentre il narratore lo legge</strong> — segui con gli occhi, seleziona col dito';
 }
 
 /* ---------- YT API ---------- */
 function onYouTubeIframeAPIReady(){
+  // Determino il video iniziale: il capitolo corrente, se ha audio
+  const initialAudio = CHAPTER_AUDIO[state.currentChapter];
+  const initialVideoId = initialAudio ? initialAudio.videoId : 's7gCh3PzzPM'; // fallback cap 1
+  const initialStart = initialAudio
+    ? (state.audioTimePerChapter[state.currentChapter] || initialAudio.offset || 0)
+    : 0;
+
   player = new YT.Player('yt-player', {
     height:'180',
     width:'320',
-    videoId: YT_VIDEO_ID,
+    videoId: initialVideoId,
     playerVars:{
       autoplay:0,
       controls:0,
@@ -1441,7 +1500,8 @@ function onYouTubeIframeAPIReady(){
       modestbranding:1,
       playsinline:1,
       rel:0,
-      enablejsapi:1
+      enablejsapi:1,
+      start: Math.floor(initialStart)
     },
     events:{
       onReady: onPlayerReady,
@@ -1449,6 +1509,7 @@ function onYouTubeIframeAPIReady(){
       onError: onPlayerError
     }
   });
+  loadedVideoId = initialVideoId;
 }
 window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
 
@@ -1456,9 +1517,16 @@ function onPlayerReady(){
   isPlayerReady = true;
   try{ durationTotal = player.getDuration(); }catch(e){}
   updatePlayerUI(player.getCurrentTime ? player.getCurrentTime() : 0);
-  // Se abbiamo salvato una posizione, riposizionati
-  if(state.audioTime && state.audioTime > 2){
-    try{ player.seekTo(state.audioTime, true); }catch(e){}
+
+  // Se il capitolo corrente non ha audio, mostra messaggio
+  if(!CHAPTER_AUDIO[state.currentChapter]){
+    updatePlayerForUnavailable();
+  }
+
+  // Se c'è un capitolo richiesto durante l'init, caricalo
+  if(pendingChapterToLoad){
+    loadChapterAudio(pendingChapterToLoad);
+    pendingChapterToLoad = null;
   }
 }
 function onPlayerStateChange(e){
@@ -1473,7 +1541,9 @@ function onPlayerStateChange(e){
   }
 }
 function onPlayerError(e){
-  toast('Errore audio: ' + e.data);
+  // Errore di embed: probabilmente il video non è disponibile o blocca l'embedding
+  toast('Audio non disponibile per questo capitolo');
+  updatePlayerForUnavailable();
 }
 function setPlayIcon(showPlay){
   document.getElementById('icon-play').style.display = showPlay ? '' : 'none';
@@ -1528,20 +1598,19 @@ function initLogin(){
 function startSession(nick, saved){
   if(saved && saved.nick === nick){
     state = Object.assign(state, saved, {nick});
+    // Backfill campi nuovi se mancanti (per chi torna da v1)
+    if(!state.audioTimePerChapter) state.audioTimePerChapter = {};
   } else {
     // Nuovo utente o nick diverso: reset
     state = {
       nick,
       currentChapter:1,
       currentParagraphIdx:0,
-      bookmarkChapter:null,
-      bookmarkParagraphIdx:null,
       audioTime:0,
-      wpmCalibration:165,
-      chapterAnchors:{},
-      chapterAudioStart:{},
+      audioTimePerChapter:{},
       readChapters:[],
       showNumbers:false,
+      reading:{fontSize:22, mode:'classic'},
       lastSaveTs:0
     };
   }
@@ -1550,13 +1619,11 @@ function startSession(nick, saved){
   document.getElementById('screen-login').classList.remove('active');
   document.getElementById('screen-reading').classList.add('active');
 
-  // Applica le impostazioni di lettura salvate (o default)
   if(!state.reading) state.reading = {fontSize:22, mode:'classic'};
   applyReadingSettings();
 
   renderChapter(state.currentChapter);
 
-  // Resume banner se lo studente non è al capitolo 1 paragrafo 0 (cioè ha già fatto dei progressi)
   if(state.currentChapter > 1 || state.currentParagraphIdx > 0){
     const ch = BOOK.chapters[state.currentChapter-1];
     document.getElementById('resume-text').innerHTML =
@@ -1601,23 +1668,21 @@ function initUIEvents(){
 
   document.getElementById('btn-reset').addEventListener('click', ()=>{
     const msg = `Cancellare tutto il progresso di ${state.nick} e ricominciare dal Capitolo 1?\n\n` +
-                `Si perderà: posizione corrente, segnalibro, capitoli letti, calibrazione audio.\n` +
-                `Il tuo nickname e le preferenze resteranno.`;
+                `Si perderà: posizione corrente, capitoli letti, posizioni audio salvate.\n` +
+                `Il tuo nickname e le preferenze di lettura resteranno.`;
     if(!confirm(msg)) return;
     state.currentChapter = 1;
     state.currentParagraphIdx = 0;
-    state.bookmarkChapter = null;
-    state.bookmarkParagraphIdx = null;
     state.audioTime = 0;
-    state.chapterAudioStart = {};
-    state.chapterAnchors = {};
+    state.audioTimePerChapter = {};
     state.readChapters = [];
     saveState();
     if(isPlayerReady && player){
-      try{ player.pauseVideo(); player.seekTo(0, true); }catch(e){}
+      try{ player.pauseVideo(); }catch(e){}
     }
     document.getElementById('resume-banner').classList.remove('show');
     renderChapter(1, {paragraphIdx:0, scroll:true});
+    loadChapterAudio(1);
     window.scrollTo({top:0, behavior:'smooth'});
     toast('Lettura ricominciata dal Capitolo 1');
   });
